@@ -11,6 +11,10 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Media3D;
 
 using LdapSearchScope =
     System.DirectoryServices.Protocols.SearchScope;
@@ -80,6 +84,9 @@ namespace ADComputerSearchTool
                     _results.Add(computer);
                 }
 
+                ResultsGrid.SelectedItem = null;
+                ResultsGrid.UnselectAllCells();
+
                 CountText.Text =
                     $"{_results.Count} Treffer";
 
@@ -118,12 +125,274 @@ namespace ADComputerSearchTool
 
             StatusBox.SelectedIndex = 0;
 
+            ResultsGrid.SelectedItem = null;
+            ResultsGrid.UnselectAllCells();
+
             _results.Clear();
 
             CountText.Text = "0 Treffer";
             InfoText.Text = "Bereit";
 
             ExportButton.IsEnabled = false;
+        }
+
+        /*
+         * Beim Rechtsklick wird die angeklickte Zelle als
+         * aktuelle Zelle gespeichert.
+         *
+         * Gleichzeitig wird der Datensatz der Zeile gesetzt.
+         * Dadurch reicht eine einzelne angeklickte Zelle aus,
+         * um anschließend die komplette Zeile zu kopieren.
+         */
+        private void ResultsGrid_PreviewMouseRightButtonDown(
+            object sender,
+            MouseButtonEventArgs e)
+        {
+            DependencyObject? originalSource =
+                e.OriginalSource as DependencyObject;
+
+            DataGridCell? clickedCell =
+                FindParent<DataGridCell>(originalSource);
+
+            if (clickedCell == null)
+            {
+                ResultsGrid.SelectedItem = null;
+                ResultsGrid.UnselectAllCells();
+
+                return;
+            }
+
+            DataGridRow? clickedRow =
+                FindParent<DataGridRow>(clickedCell);
+
+            if (clickedRow?.Item is not ComputerRecord computer)
+            {
+                ResultsGrid.SelectedItem = null;
+                ResultsGrid.UnselectAllCells();
+
+                return;
+            }
+
+            /*
+             * Die angeklickte Zelle wird als aktuelle Zelle gesetzt.
+             * Das wird für "Zelle kopieren" verwendet.
+             */
+            ResultsGrid.CurrentCell =
+                new DataGridCellInfo(
+                    computer,
+                    clickedCell.Column);
+
+            /*
+             * Nur die angeklickte Zelle wird sichtbar markiert.
+             */
+            ResultsGrid.UnselectAllCells();
+
+            ResultsGrid.SelectedCells.Add(
+                new DataGridCellInfo(
+                    computer,
+                    clickedCell.Column));
+
+            /*
+             * Zusätzlich wird der Datensatz der betreffenden
+             * Zeile gespeichert. Die ganze Zeile muss dafür
+             * nicht sichtbar markiert werden.
+             */
+            ResultsGrid.SelectedItem =
+                computer;
+
+            clickedCell.Focus();
+        }
+
+        private static T? FindParent<T>(
+            DependencyObject? child)
+            where T : DependencyObject
+        {
+            DependencyObject? current =
+                child;
+
+            while (current != null)
+            {
+                if (current is T requestedParent)
+                {
+                    return requestedParent;
+                }
+
+                if (current is Visual ||
+                    current is Visual3D)
+                {
+                    current =
+                        VisualTreeHelper.GetParent(current);
+                }
+                else if (current is FrameworkContentElement contentElement)
+                {
+                    current =
+                        contentElement.Parent;
+                }
+                else
+                {
+                    current = null;
+                }
+            }
+
+            return null;
+        }
+
+        /*
+         * Kopiert die vollständige Zeile.
+         *
+         * Der ComputerRecord wird aus CurrentCell.Item gelesen.
+         * Deshalb reicht es aus, nur eine Zelle auszuwählen.
+         */
+        private void CopyRowMenuItem_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            if (ResultsGrid.CurrentCell.Item is not ComputerRecord computer)
+            {
+                MessageBox.Show(
+                    "Bitte zuerst eine Zelle der gewünschten Zeile auswählen.",
+                    "Zeile kopieren",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                return;
+            }
+
+            string lastLogon =
+                computer.LastLogon.HasValue
+                    ? computer.LastLogon.Value.ToString(
+                        "dd.MM.yyyy HH:mm")
+                    : string.Empty;
+
+            /*
+             * Durch Tabulatoren wird die Zeile beim Einfügen
+             * in Excel auf mehrere Spalten verteilt.
+             */
+            string clipboardText =
+                string.Join(
+                    "\t",
+                    computer.Name,
+                    computer.IpAddress,
+                    computer.Status,
+                    computer.Description,
+                    computer.OrganizationalUnit,
+                    computer.MemberOf,
+                    lastLogon,
+                    computer.OperatingSystem,
+                    computer.DnsHostName);
+
+            CopyTextToClipboard(
+                clipboardText,
+                $"Die vollständige Zeile von {computer.Name}");
+        }
+
+        /*
+         * Kopiert nur den Inhalt der mit der rechten
+         * Maustaste angeklickten Zelle.
+         */
+        private void CopyCellMenuItem_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            DataGridCellInfo currentCell =
+                ResultsGrid.CurrentCell;
+
+            if (currentCell.Item is not ComputerRecord computer ||
+                currentCell.Column == null)
+            {
+                MessageBox.Show(
+                    "Bitte mit der rechten Maustaste direkt auf eine Tabellenzelle klicken.",
+                    "Zelle kopieren",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                return;
+            }
+
+            string cellValue =
+                GetCellValue(
+                    currentCell.Column,
+                    computer);
+
+            string columnHeader =
+                currentCell.Column.Header?.ToString() ??
+                "Zelle";
+
+            CopyTextToClipboard(
+                cellValue,
+                columnHeader);
+        }
+
+        private void CopyTextToClipboard(
+            string? text,
+            string description)
+        {
+            string value =
+                text ?? string.Empty;
+
+            try
+            {
+                Clipboard.SetText(value);
+
+                InfoText.Text =
+                    $"{description} wurde kopiert.";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"{description} konnte nicht kopiert werden:\n\n" +
+                    ex.Message,
+                    "Fehler beim Kopieren",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        /*
+         * Liest anhand des DataGrid-Bindings den Wert
+         * der angeklickten Zelle aus dem ComputerRecord.
+         */
+        private static string GetCellValue(
+            DataGridColumn column,
+            ComputerRecord computer)
+        {
+            if (column is not DataGridBoundColumn boundColumn)
+            {
+                return string.Empty;
+            }
+
+            if (boundColumn.Binding is not Binding binding)
+            {
+                return string.Empty;
+            }
+
+            string propertyName =
+                binding.Path?.Path ??
+                string.Empty;
+
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return string.Empty;
+            }
+
+            object? value =
+                typeof(ComputerRecord)
+                    .GetProperty(propertyName)?
+                    .GetValue(computer);
+
+            if (value == null)
+            {
+                return string.Empty;
+            }
+
+            if (value is DateTime dateTime)
+            {
+                return dateTime.ToString(
+                    "dd.MM.yyyy HH:mm");
+            }
+
+            return value.ToString() ??
+                   string.Empty;
         }
 
         private void ExportButton_Click(
@@ -141,23 +410,24 @@ namespace ADComputerSearchTool
                 return;
             }
 
-            SaveFileDialog dialog = new SaveFileDialog
-            {
-                Title =
-                    "AD-Computer nach Excel exportieren",
+            SaveFileDialog dialog =
+                new SaveFileDialog
+                {
+                    Title =
+                        "AD-Computer nach Excel exportieren",
 
-                Filter =
-                    "Excel-Arbeitsmappe (*.xlsx)|*.xlsx",
+                    Filter =
+                        "Excel-Arbeitsmappe (*.xlsx)|*.xlsx",
 
-                DefaultExt =
-                    ".xlsx",
+                    DefaultExt =
+                        ".xlsx",
 
-                AddExtension =
-                    true,
+                    AddExtension =
+                        true,
 
-                FileName =
-                    $"AD-Computer_{DateTime.Now:yyyy-MM-dd_HH-mm}.xlsx"
-            };
+                    FileName =
+                        $"AD-Computer_{DateTime.Now:yyyy-MM-dd_HH-mm}.xlsx"
+                };
 
             if (dialog.ShowDialog() != true)
             {
@@ -166,7 +436,8 @@ namespace ADComputerSearchTool
 
             try
             {
-                ExportToExcel(dialog.FileName);
+                ExportToExcel(
+                    dialog.FileName);
 
                 MessageBox.Show(
                     "Der Excel-Export wurde erfolgreich erstellt.",
@@ -185,13 +456,15 @@ namespace ADComputerSearchTool
             }
         }
 
-        private void ExportToExcel(string fileName)
+        private void ExportToExcel(
+            string fileName)
         {
             using XLWorkbook workbook =
                 new XLWorkbook();
 
             IXLWorksheet worksheet =
-                workbook.Worksheets.Add("AD-Computer");
+                workbook.Worksheets.Add(
+                    "AD-Computer");
 
             string[] headers =
             {
@@ -317,7 +590,8 @@ namespace ADComputerSearchTool
                 .Vertical =
                 XLAlignmentVerticalValues.Top;
 
-            workbook.SaveAs(fileName);
+            workbook.SaveAs(
+                fileName);
         }
 
         private void SetBusy(
@@ -328,6 +602,9 @@ namespace ADComputerSearchTool
                 !busy;
 
             ClearButton.IsEnabled =
+                !busy;
+
+            ResultsGrid.IsEnabled =
                 !busy;
 
             ExportButton.IsEnabled =
@@ -341,7 +618,8 @@ namespace ADComputerSearchTool
 
             if (!string.IsNullOrWhiteSpace(message))
             {
-                InfoText.Text = message;
+                InfoText.Text =
+                    message;
             }
         }
     }
@@ -408,10 +686,12 @@ namespace ADComputerSearchTool
                 CreateConnection();
 
             string baseDn =
-                GetDefaultNamingContext(connection);
+                GetDefaultNamingContext(
+                    connection);
 
             string ldapFilter =
-                BuildLdapFilter(criteria);
+                BuildLdapFilter(
+                    criteria);
 
             SearchRequest searchRequest =
                 new SearchRequest(
@@ -427,14 +707,16 @@ namespace ADComputerSearchTool
                     "operatingSystem",
                     "dNSHostName");
 
-            searchRequest.SizeLimit = 5000;
+            searchRequest.SizeLimit =
+                5000;
 
             searchRequest.TimeLimit =
                 TimeSpan.FromMinutes(2);
 
             SearchResponse response =
                 (SearchResponse)
-                connection.SendRequest(searchRequest);
+                connection.SendRequest(
+                    searchRequest);
 
             List<ComputerRecord> computers =
                 new List<ComputerRecord>();
@@ -462,13 +744,10 @@ namespace ADComputerSearchTool
                         entry,
                         "userAccountControl");
 
-                int userAccountControl = 0;
-
                 int.TryParse(
                     userAccountControlValue,
-                    out userAccountControl);
+                    out int userAccountControl);
 
-                // ACCOUNTDISABLE = 2
                 bool enabled =
                     (userAccountControl & 0x2) == 0;
 
@@ -476,12 +755,17 @@ namespace ADComputerSearchTool
                     GetMultipleAttributes(
                         entry,
                         "memberOf")
-                    .Select(GetCommonName)
-                    .Where(group =>
-                        !string.IsNullOrWhiteSpace(group))
+                    .Select(
+                        GetCommonName)
+                    .Where(
+                        group =>
+                            !string.IsNullOrWhiteSpace(
+                                group))
                     .Distinct(
                         StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(group => group)
+                    .OrderBy(
+                        group =>
+                            group)
                     .ToArray();
 
                 string ipAddress =
@@ -513,7 +797,9 @@ namespace ADComputerSearchTool
                                 distinguishedName),
 
                         MemberOf =
-                            string.Join("; ", groups),
+                            string.Join(
+                                "; ",
+                                groups),
 
                         LastLogon =
                             ConvertFileTime(
@@ -533,7 +819,8 @@ namespace ADComputerSearchTool
                             distinguishedName
                     };
 
-                computers.Add(computer);
+                computers.Add(
+                    computer);
             }
 
             IEnumerable<ComputerRecord> filteredComputers =
@@ -543,40 +830,45 @@ namespace ADComputerSearchTool
                     criteria.OrganizationalUnit))
             {
                 filteredComputers =
-                    filteredComputers.Where(computer =>
-                        computer
-                            .OrganizationalUnit
-                            .Contains(
-                                criteria.OrganizationalUnit,
-                                StringComparison.OrdinalIgnoreCase));
+                    filteredComputers.Where(
+                        computer =>
+                            computer
+                                .OrganizationalUnit
+                                .Contains(
+                                    criteria.OrganizationalUnit,
+                                    StringComparison.OrdinalIgnoreCase));
             }
 
             if (!string.IsNullOrWhiteSpace(
                     criteria.GroupName))
             {
                 filteredComputers =
-                    filteredComputers.Where(computer =>
-                        computer
-                            .MemberOf
-                            .Contains(
-                                criteria.GroupName,
-                                StringComparison.OrdinalIgnoreCase));
+                    filteredComputers.Where(
+                        computer =>
+                            computer
+                                .MemberOf
+                                .Contains(
+                                    criteria.GroupName,
+                                    StringComparison.OrdinalIgnoreCase));
             }
 
             if (!string.IsNullOrWhiteSpace(
                     criteria.IpAddress))
             {
                 filteredComputers =
-                    filteredComputers.Where(computer =>
-                        computer
-                            .IpAddress
-                            .Contains(
-                                criteria.IpAddress,
-                                StringComparison.OrdinalIgnoreCase));
+                    filteredComputers.Where(
+                        computer =>
+                            computer
+                                .IpAddress
+                                .Contains(
+                                    criteria.IpAddress,
+                                    StringComparison.OrdinalIgnoreCase));
             }
 
             return filteredComputers
-                .OrderBy(computer => computer.Name)
+                .OrderBy(
+                    computer =>
+                        computer.Name)
                 .ToList();
         }
 
@@ -587,7 +879,8 @@ namespace ADComputerSearchTool
                     .GetIPGlobalProperties()
                     .DomainName;
 
-            if (string.IsNullOrWhiteSpace(domainName))
+            if (string.IsNullOrWhiteSpace(
+                    domainName))
             {
                 throw new InvalidOperationException(
                     "Es konnte keine Windows-Domäne ermittelt werden. " +
@@ -603,7 +896,8 @@ namespace ADComputerSearchTool
                     false);
 
             LdapConnection connection =
-                new LdapConnection(identifier)
+                new LdapConnection(
+                    identifier)
                 {
                     AuthType =
                         AuthType.Negotiate,
@@ -644,13 +938,14 @@ namespace ADComputerSearchTool
 
             SearchResponse response =
                 (SearchResponse)
-                connection.SendRequest(request);
+                connection.SendRequest(
+                    request);
 
             if (response.Entries.Count == 0)
             {
                 throw new InvalidOperationException(
-                    "Der LDAP-Server hat keinen Eintrag " +
-                    "für defaultNamingContext zurückgegeben.");
+                    "Der LDAP-Server hat keinen Eintrag für " +
+                    "defaultNamingContext zurückgegeben.");
             }
 
             string defaultNamingContext =
@@ -681,23 +976,15 @@ namespace ADComputerSearchTool
             if (!string.IsNullOrWhiteSpace(
                     criteria.ComputerName))
             {
-                string escapedComputerName =
-                    EscapeLdapValue(
-                        criteria.ComputerName);
-
                 filters.Add(
-                    $"(name=*{escapedComputerName}*)");
+                    $"(name=*{EscapeLdapValue(criteria.ComputerName)}*)");
             }
 
             if (!string.IsNullOrWhiteSpace(
                     criteria.Description))
             {
-                string escapedDescription =
-                    EscapeLdapValue(
-                        criteria.Description);
-
                 filters.Add(
-                    $"(description=*{escapedDescription}*)");
+                    $"(description=*{EscapeLdapValue(criteria.Description)}*)");
             }
 
             if (criteria.Status == "Aktiv")
@@ -721,11 +1008,13 @@ namespace ADComputerSearchTool
             string dnsHostName)
         {
             string hostName =
-                !string.IsNullOrWhiteSpace(dnsHostName)
+                !string.IsNullOrWhiteSpace(
+                    dnsHostName)
                     ? dnsHostName
                     : computerName;
 
-            if (string.IsNullOrWhiteSpace(hostName))
+            if (string.IsNullOrWhiteSpace(
+                    hostName))
             {
                 return string.Empty;
             }
@@ -733,10 +1022,12 @@ namespace ADComputerSearchTool
             try
             {
                 IPAddress? ipv4Address =
-                    Dns.GetHostAddresses(hostName)
-                        .FirstOrDefault(address =>
-                            address.AddressFamily ==
-                            AddressFamily.InterNetwork);
+                    Dns.GetHostAddresses(
+                            hostName)
+                        .FirstOrDefault(
+                            address =>
+                                address.AddressFamily ==
+                                AddressFamily.InterNetwork);
 
                 return ipv4Address?.ToString() ??
                        string.Empty;
@@ -751,7 +1042,8 @@ namespace ADComputerSearchTool
             SearchResultEntry entry,
             string attributeName)
         {
-            if (!entry.Attributes.Contains(attributeName))
+            if (!entry.Attributes.Contains(
+                    attributeName))
             {
                 return string.Empty;
             }
@@ -770,7 +1062,8 @@ namespace ADComputerSearchTool
             if (value is byte[] bytes)
             {
                 return System.Text.Encoding.UTF8
-                    .GetString(bytes);
+                    .GetString(
+                        bytes);
             }
 
             return value?.ToString() ??
@@ -782,7 +1075,8 @@ namespace ADComputerSearchTool
                 SearchResultEntry entry,
                 string attributeName)
         {
-            if (!entry.Attributes.Contains(attributeName))
+            if (!entry.Attributes.Contains(
+                    attributeName))
             {
                 return Enumerable.Empty<string>();
             }
@@ -791,7 +1085,8 @@ namespace ADComputerSearchTool
                 entry.Attributes[attributeName];
 
             return attribute
-                .GetValues(typeof(string))
+                .GetValues(
+                    typeof(string))
                 .Cast<string>();
         }
 
@@ -805,14 +1100,17 @@ namespace ADComputerSearchTool
             }
 
             IEnumerable<string> organizationalUnits =
-                SplitDistinguishedName(distinguishedName)
-                    .Where(part =>
-                        part.StartsWith(
-                            "OU=",
-                            StringComparison.OrdinalIgnoreCase))
-                    .Select(part =>
-                        UnescapeDistinguishedNameValue(
-                            part.Substring(3)));
+                SplitDistinguishedName(
+                        distinguishedName)
+                    .Where(
+                        part =>
+                            part.StartsWith(
+                                "OU=",
+                                StringComparison.OrdinalIgnoreCase))
+                    .Select(
+                        part =>
+                            UnescapeDistinguishedNameValue(
+                                part.Substring(3)));
 
             return string.Join(
                 " / ",
@@ -830,9 +1128,9 @@ namespace ADComputerSearchTool
 
             string firstPart =
                 SplitDistinguishedName(
-                    distinguishedName)
-                .FirstOrDefault()
-                ?? distinguishedName;
+                        distinguishedName)
+                    .FirstOrDefault() ??
+                distinguishedName;
 
             if (firstPart.StartsWith(
                     "CN=",
@@ -858,18 +1156,23 @@ namespace ADComputerSearchTool
 
             bool escaped = false;
 
-            foreach (char character in distinguishedName)
+            foreach (char character
+                     in distinguishedName)
             {
                 if (escaped)
                 {
-                    current.Append(character);
+                    current.Append(
+                        character);
+
                     escaped = false;
                     continue;
                 }
 
                 if (character == '\\')
                 {
-                    current.Append(character);
+                    current.Append(
+                        character);
+
                     escaped = true;
                     continue;
                 }
@@ -877,20 +1180,25 @@ namespace ADComputerSearchTool
                 if (character == ',')
                 {
                     parts.Add(
-                        current.ToString().Trim());
+                        current
+                            .ToString()
+                            .Trim());
 
                     current.Clear();
 
                     continue;
                 }
 
-                current.Append(character);
+                current.Append(
+                    character);
             }
 
             if (current.Length > 0)
             {
                 parts.Add(
-                    current.ToString().Trim());
+                    current
+                        .ToString()
+                        .Trim());
             }
 
             return parts;
@@ -927,7 +1235,8 @@ namespace ADComputerSearchTool
             try
             {
                 return DateTime
-                    .FromFileTimeUtc(fileTime)
+                    .FromFileTimeUtc(
+                        fileTime)
                     .ToLocalTime();
             }
             catch

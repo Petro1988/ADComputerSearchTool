@@ -17,7 +17,6 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Suchbereich -->
         <GroupBox Grid.Row="0"
                   Header="Suchkriterien"
                   Padding="12">
@@ -38,8 +37,6 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-
-                <!-- Zeile 1 -->
 
                 <TextBlock Grid.Row="0"
                            Grid.Column="0"
@@ -87,8 +84,6 @@
 
                 </ComboBox>
 
-                <!-- Zeile 2 -->
-
                 <TextBlock Grid.Row="1"
                            Grid.Column="0"
                            Margin="0,0,8,8"
@@ -128,9 +123,7 @@
                          Height="28"
                          Margin="0,0,0,8"
                          VerticalContentAlignment="Center"
-                         ToolTip="Beispiel: 192.168.145 oder vollständige IP-Adresse"/>
-
-                <!-- Schaltflächen -->
+                         ToolTip="Beispiel: 192.168.145"/>
 
                 <StackPanel Grid.Row="2"
                             Grid.Column="0"
@@ -166,8 +159,6 @@
 
         </GroupBox>
 
-        <!-- Statusbereich -->
-
         <Grid Grid.Row="1"
               Margin="0,10,0,8">
 
@@ -191,8 +182,6 @@
 
         </Grid>
 
-        <!-- Ergebnistabelle -->
-
         <DataGrid x:Name="ResultsGrid"
                   Grid.Row="2"
                   AutoGenerateColumns="False"
@@ -202,10 +191,26 @@
                   AlternatingRowBackground="#F1F4F7"
                   GridLinesVisibility="Horizontal"
                   SelectionMode="Single"
-                  SelectionUnit="FullRow"
+                  SelectionUnit="CellOrRowHeader"
+                  ClipboardCopyMode="IncludeHeader"
                   EnableRowVirtualization="True"
                   HorizontalScrollBarVisibility="Auto"
-                  VerticalScrollBarVisibility="Auto">
+                  VerticalScrollBarVisibility="Auto"
+                  PreviewMouseRightButtonDown="ResultsGrid_PreviewMouseRightButtonDown">
+
+            <DataGrid.ContextMenu>
+
+                <ContextMenu>
+
+                    <MenuItem Header="Zeile kopieren"
+                              Click="CopyRowMenuItem_Click"/>
+
+                    <MenuItem Header="Zelle kopieren"
+                              Click="CopyCellMenuItem_Click"/>
+
+                </ContextMenu>
+
+            </DataGrid.ContextMenu>
 
             <DataGrid.Columns>
 
