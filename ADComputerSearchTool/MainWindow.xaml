@@ -1,0 +1,265 @@
+﻿<Window x:Class="ADComputerSearchTool.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AD-Computer-Suche"
+        Height="750"
+        Width="1500"
+        MinHeight="600"
+        MinWidth="1050"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="12">
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Suchbereich -->
+        <GroupBox Grid.Row="0"
+                  Header="Suchkriterien"
+                  Padding="12">
+
+            <Grid>
+
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="180"/>
+                </Grid.ColumnDefinitions>
+
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Zeile 1 -->
+
+                <TextBlock Grid.Row="0"
+                           Grid.Column="0"
+                           Margin="0,0,8,8"
+                           VerticalAlignment="Center"
+                           Text="Computername:"/>
+
+                <TextBox x:Name="NameBox"
+                         Grid.Row="0"
+                         Grid.Column="1"
+                         Height="28"
+                         Margin="0,0,18,8"
+                         VerticalContentAlignment="Center"/>
+
+                <TextBlock Grid.Row="0"
+                           Grid.Column="2"
+                           Margin="0,0,8,8"
+                           VerticalAlignment="Center"
+                           Text="OU enthält:"/>
+
+                <TextBox x:Name="OuBox"
+                         Grid.Row="0"
+                         Grid.Column="3"
+                         Height="28"
+                         Margin="0,0,18,8"
+                         VerticalContentAlignment="Center"
+                         ToolTip="Beispiel: Controlling"/>
+
+                <TextBlock Grid.Row="0"
+                           Grid.Column="4"
+                           Margin="0,0,8,8"
+                           VerticalAlignment="Center"
+                           Text="Status:"/>
+
+                <ComboBox x:Name="StatusBox"
+                          Grid.Row="0"
+                          Grid.Column="5"
+                          Height="28"
+                          Margin="0,0,0,8"
+                          SelectedIndex="0">
+
+                    <ComboBoxItem Content="Alle"/>
+                    <ComboBoxItem Content="Aktiv"/>
+                    <ComboBoxItem Content="Deaktiviert"/>
+
+                </ComboBox>
+
+                <!-- Zeile 2 -->
+
+                <TextBlock Grid.Row="1"
+                           Grid.Column="0"
+                           Margin="0,0,8,8"
+                           VerticalAlignment="Center"
+                           Text="Beschreibung:"/>
+
+                <TextBox x:Name="DescriptionBox"
+                         Grid.Row="1"
+                         Grid.Column="1"
+                         Height="28"
+                         Margin="0,0,18,8"
+                         VerticalContentAlignment="Center"/>
+
+                <TextBlock Grid.Row="1"
+                           Grid.Column="2"
+                           Margin="0,0,8,8"
+                           VerticalAlignment="Center"
+                           Text="Mitglied von:"/>
+
+                <TextBox x:Name="GroupBoxFilter"
+                         Grid.Row="1"
+                         Grid.Column="3"
+                         Height="28"
+                         Margin="0,0,18,8"
+                         VerticalContentAlignment="Center"
+                         ToolTip="Teil des Gruppennamens eingeben"/>
+
+                <TextBlock Grid.Row="1"
+                           Grid.Column="4"
+                           Margin="0,0,8,8"
+                           VerticalAlignment="Center"
+                           Text="IPv4-Adresse:"/>
+
+                <TextBox x:Name="IpAddressBox"
+                         Grid.Row="1"
+                         Grid.Column="5"
+                         Height="28"
+                         Margin="0,0,0,8"
+                         VerticalContentAlignment="Center"
+                         ToolTip="Beispiel: 192.168.145 oder vollständige IP-Adresse"/>
+
+                <!-- Schaltflächen -->
+
+                <StackPanel Grid.Row="2"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="6"
+                            HorizontalAlignment="Right"
+                            Orientation="Horizontal">
+
+                    <Button x:Name="ClearButton"
+                            Width="110"
+                            Height="32"
+                            Margin="0,0,8,0"
+                            Content="Zurücksetzen"
+                            Click="ClearButton_Click"/>
+
+                    <Button x:Name="SearchButton"
+                            Width="110"
+                            Height="32"
+                            Margin="0,0,8,0"
+                            Content="Suchen"
+                            IsDefault="True"
+                            Click="SearchButton_Click"/>
+
+                    <Button x:Name="ExportButton"
+                            Width="140"
+                            Height="32"
+                            Content="Excel exportieren"
+                            IsEnabled="False"
+                            Click="ExportButton_Click"/>
+
+                </StackPanel>
+
+            </Grid>
+
+        </GroupBox>
+
+        <!-- Statusbereich -->
+
+        <Grid Grid.Row="1"
+              Margin="0,10,0,8">
+
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="InfoText"
+                       Grid.Column="0"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold"
+                       Text="Bereit"/>
+
+            <ProgressBar x:Name="BusyBar"
+                         Grid.Column="1"
+                         Width="220"
+                         Height="16"
+                         IsIndeterminate="True"
+                         Visibility="Collapsed"/>
+
+        </Grid>
+
+        <!-- Ergebnistabelle -->
+
+        <DataGrid x:Name="ResultsGrid"
+                  Grid.Row="2"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  IsReadOnly="True"
+                  AlternatingRowBackground="#F1F4F7"
+                  GridLinesVisibility="Horizontal"
+                  SelectionMode="Single"
+                  SelectionUnit="FullRow"
+                  EnableRowVirtualization="True"
+                  HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Auto">
+
+            <DataGrid.Columns>
+
+                <DataGridTextColumn Header="Computer"
+                                    Binding="{Binding Name}"
+                                    Width="150"/>
+
+                <DataGridTextColumn Header="IPv4-Adresse"
+                                    Binding="{Binding IpAddress}"
+                                    Width="125"/>
+
+                <DataGridTextColumn Header="Status"
+                                    Binding="{Binding Status}"
+                                    Width="95"/>
+
+                <DataGridTextColumn Header="Beschreibung"
+                                    Binding="{Binding Description}"
+                                    Width="230"/>
+
+                <DataGridTextColumn Header="OU"
+                                    Binding="{Binding OrganizationalUnit}"
+                                    Width="300"/>
+
+                <DataGridTextColumn Header="Mitglied von"
+                                    Binding="{Binding MemberOf}"
+                                    Width="430"/>
+
+                <DataGridTextColumn Header="Letzte Anmeldung"
+                                    Binding="{Binding LastLogon,
+                                              StringFormat={}{0:dd.MM.yyyy HH:mm}}"
+                                    Width="150"/>
+
+                <DataGridTextColumn Header="Betriebssystem"
+                                    Binding="{Binding OperatingSystem}"
+                                    Width="210"/>
+
+                <DataGridTextColumn Header="DNS-Hostname"
+                                    Binding="{Binding DnsHostName}"
+                                    Width="260"/>
+
+            </DataGrid.Columns>
+
+        </DataGrid>
+
+        <StatusBar Grid.Row="3"
+                   Margin="0,8,0,0">
+
+            <StatusBarItem>
+                <TextBlock x:Name="CountText"
+                           Text="0 Treffer"/>
+            </StatusBarItem>
+
+        </StatusBar>
+
+    </Grid>
+
+</Window>
