@@ -1,12 +1,11 @@
 ﻿using ADComputerSearchTool.Models;
 using ADComputerSearchTool.ViewModels;
+using ADComputerSearchTool.Helpers;
 using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Media3D;
 
 namespace ADComputerSearchTool;
 
@@ -43,7 +42,7 @@ public partial class MainWindow : Window
             e.OriginalSource as DependencyObject;
 
         DataGridCell? clickedCell =
-            FindParent<DataGridCell>(source);
+            source.FindParent<DataGridCell>();
 
         if (clickedCell == null)
         {
@@ -51,7 +50,7 @@ public partial class MainWindow : Window
         }
 
         DataGridRow? clickedRow =
-            FindParent<DataGridRow>(clickedCell);
+    clickedCell.FindParent<DataGridRow>();
 
         if (clickedRow?.Item is not ComputerRecord computer)
         {
@@ -206,44 +205,5 @@ public partial class MainWindow : Window
                 value.ToString() ??
                 string.Empty
         };
-    }
-
-    /// <summary>
-    /// Sucht ausgehend von einem angeklickten WPF-Element
-    /// nach einem übergeordneten Element des angegebenen Typs.
-    /// </summary>
-    private static T? FindParent<T>(
-        DependencyObject? child)
-        where T : DependencyObject
-    {
-        DependencyObject? current =
-            child;
-
-        while (current != null)
-        {
-            if (current is T requestedParent)
-            {
-                return requestedParent;
-            }
-
-            if (current is Visual ||
-                current is Visual3D)
-            {
-                current =
-                    VisualTreeHelper.GetParent(
-                        current);
-            }
-            else if (current is FrameworkContentElement contentElement)
-            {
-                current =
-                    contentElement.Parent;
-            }
-            else
-            {
-                current = null;
-            }
-        }
-
-        return null;
     }
 }
