@@ -10,7 +10,8 @@ public static class VisualTreeHelperExtensions
         this DependencyObject? child)
         where T : DependencyObject
     {
-        DependencyObject? current = child;
+        DependencyObject? current =
+            child;
 
         while (current != null)
         {
@@ -23,7 +24,8 @@ public static class VisualTreeHelperExtensions
                 current is Visual3D)
             {
                 current =
-                    VisualTreeHelper.GetParent(current);
+                    VisualTreeHelper.GetParent(
+                        current);
             }
             else if (current is FrameworkContentElement contentElement)
             {

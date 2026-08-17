@@ -31,8 +31,6 @@ public partial class App : Application
     private static void ConfigureServices(
         IServiceCollection services)
     {
-        // Infrastruktur-Services
-
         services.AddSingleton<
             IIpAddressService,
             DnsIpAddressService>();
@@ -53,12 +51,8 @@ public partial class App : Application
             IFileDialogService,
             FileDialogService>();
 
-        // ViewModel
-
         services.AddSingleton<
             MainWindowViewModel>();
-
-        // Hauptfenster
 
         services.AddSingleton<
             MainWindow>();

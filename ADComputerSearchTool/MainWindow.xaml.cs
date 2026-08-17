@@ -1,6 +1,6 @@
-﻿using ADComputerSearchTool.Models;
+﻿using ADComputerSearchTool.Helpers;
+using ADComputerSearchTool.Models;
 using ADComputerSearchTool.ViewModels;
-using ADComputerSearchTool.Helpers;
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,11 +28,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Speichert beim Rechtsklick die angeklickte Tabellenzelle
-    /// und den zugehörigen Computer.
-    ///
-    /// Dadurch reicht der Rechtsklick auf eine einzelne Zelle aus,
-    /// um anschließend die vollständige Zeile zu kopieren.
+    /// Wählt beim Rechtsklick die angeklickte Zelle und
+    /// den dazugehörigen Computer aus.
     /// </summary>
     private void ResultsGrid_PreviewMouseRightButtonDown(
         object sender,
@@ -50,7 +47,7 @@ public partial class MainWindow : Window
         }
 
         DataGridRow? clickedRow =
-    clickedCell.FindParent<DataGridRow>();
+            clickedCell.FindParent<DataGridRow>();
 
         if (clickedRow?.Item is not ComputerRecord computer)
         {
@@ -80,8 +77,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Kopiert die vollständigen Informationen des Computers,
-    /// zu dem die angeklickte Zelle gehört.
+    /// Kopiert die vollständige Zeile des Computers.
+    /// Der Rechtsklick auf eine einzelne Zelle reicht aus.
     /// </summary>
     private void CopyRowMenuItem_Click(
         object sender,
@@ -112,8 +109,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Kopiert nur den Inhalt der mit der rechten
-    /// Maustaste angeklickten Tabellenzelle.
+    /// Kopiert ausschließlich den Wert der mit der
+    /// rechten Maustaste angeklickten Zelle.
     /// </summary>
     private void CopyCellMenuItem_Click(
         object sender,
@@ -161,8 +158,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Liest anhand des DataGrid-Bindings den Wert
-    /// der aktuell ausgewählten Zelle aus.
+    /// Ermittelt über das Binding der DataGrid-Spalte
+    /// den Wert der ausgewählten Zelle.
     /// </summary>
     private static string GetCellValue(
         DataGridColumn column,
