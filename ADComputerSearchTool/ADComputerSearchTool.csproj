@@ -6,14 +6,24 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UseWPF>true</UseWPF>
+	
+		<ApplicationIcon>Assets\ADComputerSearchTool.ico</ApplicationIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="ClosedXML"
-						  Version="0.105.0" />
+	  <None Remove="Assets\ADComputerSearchTool.ico" />
+	</ItemGroup>
 
-		<PackageReference Include="System.DirectoryServices.Protocols"
-						  Version="8.0.0" />
+	<ItemGroup>
+		<PackageReference Include="ClosedXML" Version="0.105.0" />
+
+		<PackageReference Include="System.DirectoryServices.Protocols" Version="8.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Resource Include="Assets\ADComputerSearchTool.ico">
+	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+	  </Resource>
 	</ItemGroup>
 
 </Project>
