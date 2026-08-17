@@ -11,7 +11,9 @@ public sealed class ActiveDirectoryQueryException : Exception
     public ActiveDirectoryQueryException(
         string message,
         Exception innerException)
-        : base(message, innerException)
+        : base(
+            message,
+            innerException)
     {
     }
 }

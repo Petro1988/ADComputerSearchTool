@@ -6,54 +6,20 @@ namespace ADComputerSearchTool.Services;
 
 public sealed class ExcelExportService : IExcelExportService
 {
-    private static readonly string[] Headers =
-    [
-        "Computername",
-        "IPv4-Adresse",
-        "Status",
-        "Beschreibung",
-        "Organisationseinheit",
-        "Mitglied von",
-        "Letzte Anmeldung",
-        "Betriebssystem",
-        "DNS-Hostname",
-        "Distinguished Name"
-    ];
-
     public void Export(
         string filePath,
         IEnumerable<ComputerRecord> computers)
     {
-        if (string.IsNullOrWhiteSpace(filePath))
-        {
-            throw new ArgumentException(
-                "Der Speicherpfad darf nicht leer sein.",
-                nameof(filePath));
-        }
-
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         ArgumentNullException.ThrowIfNull(computers);
 
-        List<ComputerRecord> computerList =
-            computers.ToList();
-
-        if (computerList.Count == 0)
-        {
-            throw new InvalidOperationException(
-                "Es sind keine Computer zum Exportieren vorhanden.");
-        }
-
-        using XLWorkbook workbook =
-            new XLWorkbook();
+        using XLWorkbook workbook = new();
 
         IXLWorksheet worksheet =
-            workbook.Worksheets.Add(
-                "AD-Computer");
+            workbook.Worksheets.Add("AD-Computer");
 
         WriteHeaders(worksheet);
-        WriteComputerRows(
-            worksheet,
-            computerList);
-
+        WriteRows(worksheet, computers);
         FormatWorksheet(worksheet);
 
         workbook.SaveAs(filePath);
@@ -62,19 +28,33 @@ public sealed class ExcelExportService : IExcelExportService
     private static void WriteHeaders(
         IXLWorksheet worksheet)
     {
+        string[] headers =
+        {
+            "Computername",
+            "IPv4-Adresse",
+            "Status",
+            "Beschreibung",
+            "Organisationseinheit",
+            "Mitglied von",
+            "Letzte Anmeldung",
+            "Betriebssystem",
+            "DNS-Hostname",
+            "Distinguished Name"
+        };
+
         for (int column = 0;
-             column < Headers.Length;
+             column < headers.Length;
              column++)
         {
             worksheet
                 .Cell(1, column + 1)
-                .Value = Headers[column];
+                .Value = headers[column];
         }
     }
 
-    private static void WriteComputerRows(
+    private static void WriteRows(
         IXLWorksheet worksheet,
-        IReadOnlyList<ComputerRecord> computers)
+        IEnumerable<ComputerRecord> computers)
     {
         int row = 2;
 
@@ -138,6 +118,20 @@ public sealed class ExcelExportService : IExcelExportService
         worksheet.SheetView.FreezeRows(1);
         worksheet.Columns().AdjustToContents();
 
+        SetColumnWidths(worksheet);
+        SetTextWrapping(worksheet);
+
+        worksheet
+            .Rows()
+            .Style
+            .Alignment
+            .Vertical =
+            XLAlignmentVerticalValues.Top;
+    }
+
+    private static void SetColumnWidths(
+        IXLWorksheet worksheet)
+    {
         worksheet.Column(1).Width = 22;
         worksheet.Column(2).Width = 18;
         worksheet.Column(3).Width = 14;
@@ -148,7 +142,11 @@ public sealed class ExcelExportService : IExcelExportService
         worksheet.Column(8).Width = 30;
         worksheet.Column(9).Width = 40;
         worksheet.Column(10).Width = 55;
+    }
 
+    private static void SetTextWrapping(
+        IXLWorksheet worksheet)
+    {
         worksheet
             .Column(4)
             .Style
@@ -172,12 +170,5 @@ public sealed class ExcelExportService : IExcelExportService
             .Style
             .Alignment
             .WrapText = true;
-
-        worksheet
-            .Rows()
-            .Style
-            .Alignment
-            .Vertical =
-            XLAlignmentVerticalValues.Top;
     }
 }

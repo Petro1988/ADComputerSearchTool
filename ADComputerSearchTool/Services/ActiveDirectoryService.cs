@@ -1,33 +1,25 @@
 ﻿using ADComputerSearchTool.Exceptions;
-using ADComputerSearchTool.Helpers;
 using ADComputerSearchTool.Models;
 using ADComputerSearchTool.Services.Interfaces;
 using System.DirectoryServices.Protocols;
 using System.Net;
 using System.Net.NetworkInformation;
-using System.Text;
 
 using LdapSearchScope =
     System.DirectoryServices.Protocols.SearchScope;
 
 namespace ADComputerSearchTool.Services;
 
-public sealed class ActiveDirectoryService :
-    IActiveDirectoryService
+public sealed class ActiveDirectoryService : IActiveDirectoryService
 {
-    private const int AccountDisabledFlag = 2;
+    private const int DisabledAccountFlag = 0x2;
+    private const int MaximumResultCount = 5000;
 
-    private static readonly string[] ComputerAttributes =
-    [
-        "name",
-        "description",
-        "distinguishedName",
-        "userAccountControl",
-        "memberOf",
-        "lastLogonTimestamp",
-        "operatingSystem",
-        "dNSHostName"
-    ];
+    private static readonly TimeSpan LdapTimeout =
+        TimeSpan.FromSeconds(30);
+
+    private static readonly TimeSpan SearchTimeout =
+        TimeSpan.FromMinutes(2);
 
     private readonly IIpAddressService _ipAddressService;
 
@@ -49,49 +41,71 @@ public sealed class ActiveDirectoryService :
 
         try
         {
-            using LdapConnection connection =
-                CreateConnection();
+            List<AdComputerData> adComputers =
+                await Task.Run(
+                    () => QueryActiveDirectory(
+                        criteria,
+                        cancellationToken),
+                    cancellationToken);
 
-            string baseDistinguishedName =
-                GetDefaultNamingContext(connection);
+            List<ComputerRecord> computers =
+                new List<ComputerRecord>(
+                    adComputers.Count);
 
-            string ldapFilter =
-                LdapFilterHelper.BuildComputerFilter(
-                    criteria);
-
-            SearchRequest request =
-                new SearchRequest(
-                    baseDistinguishedName,
-                    ldapFilter,
-                    LdapSearchScope.Subtree,
-                    ComputerAttributes);
-
-            request.SizeLimit = 5000;
-            request.TimeLimit = TimeSpan.FromMinutes(2);
-
-            SearchResponse response =
-                (SearchResponse)
-                connection.SendRequest(request);
-
-            List<ComputerRecord> computers = [];
-
-            foreach (SearchResultEntry entry
-                     in response.Entries)
+            foreach (AdComputerData adComputer in adComputers)
             {
-                cancellationToken
-                    .ThrowIfCancellationRequested();
+                cancellationToken.ThrowIfCancellationRequested();
+
+                string ipAddress =
+                    await _ipAddressService
+                        .ResolveIPv4AddressAsync(
+                            adComputer.Name,
+                            adComputer.DnsHostName,
+                            cancellationToken);
 
                 ComputerRecord computer =
-                    await CreateComputerRecordAsync(
-                        entry,
-                        cancellationToken);
+                    new ComputerRecord
+                    {
+                        Name =
+                            adComputer.Name,
+
+                        IpAddress =
+                            ipAddress,
+
+                        IsEnabled =
+                            adComputer.IsEnabled,
+
+                        Description =
+                            adComputer.Description,
+
+                        OrganizationalUnit =
+                            adComputer.OrganizationalUnit,
+
+                        MemberOf =
+                            adComputer.MemberOf,
+
+                        LastLogon =
+                            adComputer.LastLogon,
+
+                        OperatingSystem =
+                            adComputer.OperatingSystem,
+
+                        DnsHostName =
+                            adComputer.DnsHostName,
+
+                        DistinguishedName =
+                            adComputer.DistinguishedName
+                    };
 
                 computers.Add(computer);
             }
 
-            return ApplyLocalFilters(
+            IEnumerable<ComputerRecord> filteredComputers =
+                ApplyLocalFilters(
                     computers,
-                    criteria)
+                    criteria);
+
+            return filteredComputers
                 .OrderBy(computer => computer.Name)
                 .ToList();
         }
@@ -103,26 +117,100 @@ public sealed class ActiveDirectoryService :
         {
             throw;
         }
-        catch (Exception exception)
+        catch (Exception ex)
         {
             throw new ActiveDirectoryQueryException(
-                "Die Computerinformationen konnten nicht " +
-                "aus dem Active Directory gelesen werden.",
-                exception);
+                "Die Computer konnten nicht aus dem Active Directory gelesen werden.",
+                ex);
         }
     }
 
-    private async Task<ComputerRecord>
-        CreateComputerRecordAsync(
-            SearchResultEntry entry,
-            CancellationToken cancellationToken)
+    private static List<AdComputerData> QueryActiveDirectory(
+        ComputerSearchCriteria criteria,
+        CancellationToken cancellationToken)
     {
-        string computerName =
-            GetAttribute(entry, "name");
+        cancellationToken.ThrowIfCancellationRequested();
 
-        string dnsHostName =
-            GetAttribute(entry, "dNSHostName");
+        using LdapConnection connection =
+            CreateConnection();
 
+        string baseDistinguishedName =
+            GetDefaultNamingContext(connection);
+
+        string ldapFilter =
+            BuildLdapFilter(criteria);
+
+        SearchRequest request =
+            CreateComputerSearchRequest(
+                baseDistinguishedName,
+                ldapFilter);
+
+        SearchResponse response;
+
+        try
+        {
+            response =
+                (SearchResponse)
+                connection.SendRequest(request);
+        }
+        catch (DirectoryOperationException ex)
+        {
+            throw new ActiveDirectoryQueryException(
+                "Die LDAP-Suchanfrage konnte nicht ausgeführt werden.",
+                ex);
+        }
+        catch (LdapException ex)
+        {
+            throw new ActiveDirectoryQueryException(
+                "Die Verbindung zum Active Directory ist fehlgeschlagen.",
+                ex);
+        }
+
+        List<AdComputerData> results =
+            new List<AdComputerData>(
+                response.Entries.Count);
+
+        foreach (SearchResultEntry entry in response.Entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            results.Add(
+                CreateAdComputerData(entry));
+        }
+
+        return results;
+    }
+
+    private static SearchRequest CreateComputerSearchRequest(
+        string baseDistinguishedName,
+        string ldapFilter)
+    {
+        SearchRequest request =
+            new SearchRequest(
+                baseDistinguishedName,
+                ldapFilter,
+                LdapSearchScope.Subtree,
+                "name",
+                "description",
+                "distinguishedName",
+                "userAccountControl",
+                "memberOf",
+                "lastLogonTimestamp",
+                "operatingSystem",
+                "dNSHostName");
+
+        request.SizeLimit =
+            MaximumResultCount;
+
+        request.TimeLimit =
+            SearchTimeout;
+
+        return request;
+    }
+
+    private static AdComputerData CreateAdComputerData(
+        SearchResultEntry entry)
+    {
         string distinguishedName =
             GetAttribute(
                 entry,
@@ -135,37 +223,26 @@ public sealed class ActiveDirectoryService :
             out int userAccountControl);
 
         bool isEnabled =
-            (userAccountControl &
-             AccountDisabledFlag) == 0;
+            (userAccountControl & DisabledAccountFlag) == 0;
 
         string[] groups =
             GetMultipleAttributes(
-                    entry,
-                    "memberOf")
-                .Select(
-                    DistinguishedNameHelper
-                        .GetCommonName)
-                .Where(group =>
-                    !string.IsNullOrWhiteSpace(group))
-                .Distinct(
-                    StringComparer.OrdinalIgnoreCase)
-                .OrderBy(group => group)
-                .ToArray();
+                entry,
+                "memberOf")
+            .Select(GetCommonName)
+            .Where(group =>
+                !string.IsNullOrWhiteSpace(group))
+            .Distinct(
+                StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group)
+            .ToArray();
 
-        string ipAddress =
-            await _ipAddressService
-                .ResolveIPv4AddressAsync(
-                    computerName,
-                    dnsHostName,
-                    cancellationToken);
-
-        return new ComputerRecord
+        return new AdComputerData
         {
             Name =
-                computerName,
-
-            IpAddress =
-                ipAddress,
+                GetAttribute(
+                    entry,
+                    "name"),
 
             IsEnabled =
                 isEnabled,
@@ -176,9 +253,8 @@ public sealed class ActiveDirectoryService :
                     "description"),
 
             OrganizationalUnit =
-                DistinguishedNameHelper
-                    .GetOrganizationalUnitPath(
-                        distinguishedName),
+                GetOrganizationalUnitPath(
+                    distinguishedName),
 
             MemberOf =
                 string.Join(
@@ -197,58 +273,53 @@ public sealed class ActiveDirectoryService :
                     "operatingSystem"),
 
             DnsHostName =
-                dnsHostName,
+                GetAttribute(
+                    entry,
+                    "dNSHostName"),
 
             DistinguishedName =
                 distinguishedName
         };
     }
 
-    private static IEnumerable<ComputerRecord>
-        ApplyLocalFilters(
-            IEnumerable<ComputerRecord> computers,
-            ComputerSearchCriteria criteria)
+    private static IEnumerable<ComputerRecord> ApplyLocalFilters(
+        IEnumerable<ComputerRecord> computers,
+        ComputerSearchCriteria criteria)
     {
-        IEnumerable<ComputerRecord> result =
+        IEnumerable<ComputerRecord> filteredComputers =
             computers;
 
         if (!string.IsNullOrWhiteSpace(
                 criteria.OrganizationalUnit))
         {
-            result =
-                result.Where(computer =>
-                    computer
-                        .OrganizationalUnit
-                        .Contains(
-                            criteria.OrganizationalUnit,
-                            StringComparison.OrdinalIgnoreCase));
+            filteredComputers =
+                filteredComputers.Where(computer =>
+                    computer.OrganizationalUnit.Contains(
+                        criteria.OrganizationalUnit,
+                        StringComparison.OrdinalIgnoreCase));
         }
 
         if (!string.IsNullOrWhiteSpace(
                 criteria.GroupName))
         {
-            result =
-                result.Where(computer =>
-                    computer
-                        .MemberOf
-                        .Contains(
-                            criteria.GroupName,
-                            StringComparison.OrdinalIgnoreCase));
+            filteredComputers =
+                filteredComputers.Where(computer =>
+                    computer.MemberOf.Contains(
+                        criteria.GroupName,
+                        StringComparison.OrdinalIgnoreCase));
         }
 
         if (!string.IsNullOrWhiteSpace(
                 criteria.IpAddress))
         {
-            result =
-                result.Where(computer =>
-                    computer
-                        .IpAddress
-                        .Contains(
-                            criteria.IpAddress,
-                            StringComparison.OrdinalIgnoreCase));
+            filteredComputers =
+                filteredComputers.Where(computer =>
+                    computer.IpAddress.Contains(
+                        criteria.IpAddress,
+                        StringComparison.OrdinalIgnoreCase));
         }
 
-        return result;
+        return filteredComputers;
     }
 
     private static LdapConnection CreateConnection()
@@ -261,17 +332,16 @@ public sealed class ActiveDirectoryService :
         if (string.IsNullOrWhiteSpace(domainName))
         {
             throw new ActiveDirectoryQueryException(
-                "Es konnte keine Windows-Domäne ermittelt " +
-                "werden. Der Rechner muss Mitglied der Domäne " +
-                "sein oder über VPN Zugriff auf die Domäne haben.");
+                "Es konnte keine Windows-Domäne ermittelt werden. " +
+                "Der Rechner muss Mitglied der Domäne sein oder über VPN Zugriff haben.");
         }
 
         LdapDirectoryIdentifier identifier =
             new LdapDirectoryIdentifier(
                 domainName,
                 389,
-                fullyQualifiedDnsHostName: false,
-                connectionless: false);
+                false,
+                false);
 
         LdapConnection connection =
             new LdapConnection(identifier)
@@ -280,18 +350,28 @@ public sealed class ActiveDirectoryService :
                     AuthType.Negotiate,
 
                 Credential =
-                    CredentialCache
-                        .DefaultNetworkCredentials,
+                    CredentialCache.DefaultNetworkCredentials,
 
                 Timeout =
-                    TimeSpan.FromSeconds(30)
+                    LdapTimeout
             };
 
         connection.SessionOptions.ProtocolVersion = 3;
         connection.SessionOptions.Signing = true;
         connection.SessionOptions.Sealing = true;
 
-        connection.Bind();
+        try
+        {
+            connection.Bind();
+        }
+        catch (LdapException ex)
+        {
+            connection.Dispose();
+
+            throw new ActiveDirectoryQueryException(
+                $"Die Verbindung zur Domäne „{domainName}“ konnte nicht hergestellt werden.",
+                ex);
+        }
 
         return connection;
     }
@@ -301,11 +381,10 @@ public sealed class ActiveDirectoryService :
     {
         SearchRequest request =
             new SearchRequest(
-                distinguishedName: null,
-                ldapFilter: "(objectClass=*)",
-                searchScope: LdapSearchScope.Base,
-                attributeList:
-                    "defaultNamingContext");
+                null,
+                "(objectClass=*)",
+                LdapSearchScope.Base,
+                "defaultNamingContext");
 
         SearchResponse response =
             (SearchResponse)
@@ -314,8 +393,7 @@ public sealed class ActiveDirectoryService :
         if (response.Entries.Count == 0)
         {
             throw new ActiveDirectoryQueryException(
-                "Der LDAP-Server hat keinen " +
-                "defaultNamingContext zurückgegeben.");
+                "Der Domänencontroller hat keinen defaultNamingContext zurückgegeben.");
         }
 
         string defaultNamingContext =
@@ -327,19 +405,58 @@ public sealed class ActiveDirectoryService :
                 defaultNamingContext))
         {
             throw new ActiveDirectoryQueryException(
-                "Der LDAP-Basispfad der Domäne konnte " +
-                "nicht ermittelt werden.");
+                "Der LDAP-Basispfad der Domäne konnte nicht ermittelt werden.");
         }
 
         return defaultNamingContext;
+    }
+
+    private static string BuildLdapFilter(
+        ComputerSearchCriteria criteria)
+    {
+        List<string> filters =
+            new List<string>
+            {
+                "(objectCategory=computer)"
+            };
+
+        if (!string.IsNullOrWhiteSpace(
+                criteria.ComputerName))
+        {
+            filters.Add(
+                $"(name=*{EscapeLdapValue(criteria.ComputerName)}*)");
+        }
+
+        if (!string.IsNullOrWhiteSpace(
+                criteria.Description))
+        {
+            filters.Add(
+                $"(description=*{EscapeLdapValue(criteria.Description)}*)");
+        }
+
+        if (criteria.Status ==
+            ComputerStatusFilter.Enabled)
+        {
+            filters.Add(
+                "(!(userAccountControl:" +
+                "1.2.840.113556.1.4.803:=2))");
+        }
+        else if (criteria.Status ==
+                 ComputerStatusFilter.Disabled)
+        {
+            filters.Add(
+                "(userAccountControl:" +
+                "1.2.840.113556.1.4.803:=2)");
+        }
+
+        return $"(&{string.Concat(filters)})";
     }
 
     private static string GetAttribute(
         SearchResultEntry entry,
         string attributeName)
     {
-        if (!entry.Attributes.Contains(
-                attributeName))
+        if (!entry.Attributes.Contains(attributeName))
         {
             return string.Empty;
         }
@@ -352,24 +469,24 @@ public sealed class ActiveDirectoryService :
             return string.Empty;
         }
 
-        object? value = attribute[0];
+        object? value =
+            attribute[0];
 
         if (value is byte[] bytes)
         {
-            return Encoding.UTF8.GetString(bytes);
+            return System.Text.Encoding.UTF8
+                .GetString(bytes);
         }
 
         return value?.ToString() ??
                string.Empty;
     }
 
-    private static IEnumerable<string>
-        GetMultipleAttributes(
-            SearchResultEntry entry,
-            string attributeName)
+    private static IEnumerable<string> GetMultipleAttributes(
+        SearchResultEntry entry,
+        string attributeName)
     {
-        if (!entry.Attributes.Contains(
-                attributeName))
+        if (!entry.Attributes.Contains(attributeName))
         {
             return Enumerable.Empty<string>();
         }
@@ -380,6 +497,116 @@ public sealed class ActiveDirectoryService :
         return attribute
             .GetValues(typeof(string))
             .Cast<string>();
+    }
+
+    private static string GetOrganizationalUnitPath(
+        string distinguishedName)
+    {
+        if (string.IsNullOrWhiteSpace(
+                distinguishedName))
+        {
+            return string.Empty;
+        }
+
+        IEnumerable<string> organizationalUnits =
+            SplitDistinguishedName(distinguishedName)
+                .Where(part =>
+                    part.StartsWith(
+                        "OU=",
+                        StringComparison.OrdinalIgnoreCase))
+                .Select(part =>
+                    UnescapeDistinguishedNameValue(
+                        part.Substring(3)));
+
+        return string.Join(
+            " / ",
+            organizationalUnits);
+    }
+
+    private static string GetCommonName(
+        string distinguishedName)
+    {
+        if (string.IsNullOrWhiteSpace(
+                distinguishedName))
+        {
+            return string.Empty;
+        }
+
+        string firstPart =
+            SplitDistinguishedName(distinguishedName)
+                .FirstOrDefault() ??
+            distinguishedName;
+
+        if (firstPart.StartsWith(
+                "CN=",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            firstPart =
+                firstPart.Substring(3);
+        }
+
+        return UnescapeDistinguishedNameValue(
+            firstPart);
+    }
+
+    private static IEnumerable<string> SplitDistinguishedName(
+        string distinguishedName)
+    {
+        List<string> parts =
+            new List<string>();
+
+        System.Text.StringBuilder current =
+            new System.Text.StringBuilder();
+
+        bool escaped = false;
+
+        foreach (char character in distinguishedName)
+        {
+            if (escaped)
+            {
+                current.Append(character);
+                escaped = false;
+                continue;
+            }
+
+            if (character == '\\')
+            {
+                current.Append(character);
+                escaped = true;
+                continue;
+            }
+
+            if (character == ',')
+            {
+                parts.Add(
+                    current.ToString().Trim());
+
+                current.Clear();
+                continue;
+            }
+
+            current.Append(character);
+        }
+
+        if (current.Length > 0)
+        {
+            parts.Add(
+                current.ToString().Trim());
+        }
+
+        return parts;
+    }
+
+    private static string UnescapeDistinguishedNameValue(
+        string value)
+    {
+        return value
+            .Replace(@"\,", ",")
+            .Replace(@"\+", "+")
+            .Replace(@"\=", "=")
+            .Replace(@"\#", "#")
+            .Replace(@"\;", ";")
+            .Replace(@"\\", @"\");
     }
 
     private static DateTime? ConvertFileTime(
@@ -403,5 +630,44 @@ public sealed class ActiveDirectoryService :
         {
             return null;
         }
+    }
+
+    private static string EscapeLdapValue(
+        string value)
+    {
+        return value
+            .Replace(@"\", @"\5c")
+            .Replace("*", @"\2a")
+            .Replace("(", @"\28")
+            .Replace(")", @"\29")
+            .Replace("\0", @"\00");
+    }
+
+    private sealed class AdComputerData
+    {
+        public string Name { get; init; } =
+            string.Empty;
+
+        public bool IsEnabled { get; init; }
+
+        public string Description { get; init; } =
+            string.Empty;
+
+        public string OrganizationalUnit { get; init; } =
+            string.Empty;
+
+        public string MemberOf { get; init; } =
+            string.Empty;
+
+        public DateTime? LastLogon { get; init; }
+
+        public string OperatingSystem { get; init; } =
+            string.Empty;
+
+        public string DnsHostName { get; init; } =
+            string.Empty;
+
+        public string DistinguishedName { get; init; } =
+            string.Empty;
     }
 }

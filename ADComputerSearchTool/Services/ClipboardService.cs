@@ -22,7 +22,7 @@ public sealed class ClipboardService : IClipboardService
                 "dd.MM.yyyy HH:mm") ??
             string.Empty;
 
-        string clipboardText =
+        string rowText =
             string.Join(
                 "\t",
                 computer.Name,
@@ -35,6 +35,6 @@ public sealed class ClipboardService : IClipboardService
                 computer.OperatingSystem,
                 computer.DnsHostName);
 
-        Clipboard.SetText(clipboardText);
+        Clipboard.SetText(rowText);
     }
 }

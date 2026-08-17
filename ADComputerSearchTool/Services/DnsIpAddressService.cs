@@ -12,9 +12,9 @@ public sealed class DnsIpAddressService : IIpAddressService
         CancellationToken cancellationToken = default)
     {
         string hostName =
-            !string.IsNullOrWhiteSpace(dnsHostName)
-                ? dnsHostName
-                : computerName;
+            GetHostName(
+                computerName,
+                dnsHostName);
 
         if (string.IsNullOrWhiteSpace(hostName))
         {
@@ -40,11 +40,26 @@ public sealed class DnsIpAddressService : IIpAddressService
         {
             throw;
         }
-        catch
+        catch (SocketException)
         {
-            // Ein fehlender oder veralteter DNS-Eintrag
-            // soll nicht die gesamte AD-Suche abbrechen.
             return string.Empty;
         }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string GetHostName(
+        string computerName,
+        string dnsHostName)
+    {
+        if (!string.IsNullOrWhiteSpace(dnsHostName))
+        {
+            return dnsHostName.Trim();
+        }
+
+        return computerName?.Trim() ??
+               string.Empty;
     }
 }
