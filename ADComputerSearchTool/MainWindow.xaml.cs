@@ -1,7 +1,6 @@
 ﻿using ADComputerSearchTool.Models;
-using ADComputerSearchTool.Services;
-using ADComputerSearchTool.Services.Interfaces;
 using ADComputerSearchTool.ViewModels;
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -15,37 +14,27 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel;
 
-    public MainWindow()
+    public MainWindow(
+        MainWindowViewModel viewModel)
     {
         InitializeComponent();
 
-        IIpAddressService ipAddressService =
-            new DnsIpAddressService();
-
-        IActiveDirectoryService activeDirectoryService =
-            new ActiveDirectoryService(
-                ipAddressService);
-
-        IClipboardService clipboardService =
-            new ClipboardService();
-
-        IExcelExportService excelExportService =
-            new ExcelExportService();
-
-        IFileDialogService fileDialogService =
-            new FileDialogService();
-
         _viewModel =
-            new MainWindowViewModel(
-                activeDirectoryService,
-                clipboardService,
-                excelExportService,
-                fileDialogService);
+            viewModel ??
+            throw new ArgumentNullException(
+                nameof(viewModel));
 
         DataContext =
             _viewModel;
     }
 
+    /// <summary>
+    /// Speichert beim Rechtsklick die angeklickte Tabellenzelle
+    /// und den zugehörigen Computer.
+    ///
+    /// Dadurch reicht der Rechtsklick auf eine einzelne Zelle aus,
+    /// um anschließend die vollständige Zeile zu kopieren.
+    /// </summary>
     private void ResultsGrid_PreviewMouseRightButtonDown(
         object sender,
         MouseButtonEventArgs e)
@@ -69,17 +58,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        ResultsGrid.CurrentCell =
+        DataGridCellInfo selectedCell =
             new DataGridCellInfo(
                 computer,
                 clickedCell.Column);
 
+        ResultsGrid.CurrentCell =
+            selectedCell;
+
         ResultsGrid.UnselectAllCells();
 
         ResultsGrid.SelectedCells.Add(
-            new DataGridCellInfo(
-                computer,
-                clickedCell.Column));
+            selectedCell);
 
         ResultsGrid.SelectedItem =
             computer;
@@ -90,11 +80,19 @@ public partial class MainWindow : Window
         clickedCell.Focus();
     }
 
+    /// <summary>
+    /// Kopiert die vollständigen Informationen des Computers,
+    /// zu dem die angeklickte Zelle gehört.
+    /// </summary>
     private void CopyRowMenuItem_Click(
         object sender,
         RoutedEventArgs e)
     {
-        if (ResultsGrid.CurrentCell.Item is not ComputerRecord computer)
+        ComputerRecord? computer =
+            ResultsGrid.CurrentCell.Item as ComputerRecord ??
+            _viewModel.SelectedComputer;
+
+        if (computer == null)
         {
             MessageBox.Show(
                 "Bitte mit der rechten Maustaste auf eine Tabellenzelle klicken.",
@@ -105,12 +103,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_viewModel.CopyRowCommand.CanExecute(computer))
+        if (!_viewModel.CopyRowCommand.CanExecute(computer))
         {
-            _viewModel.CopyRowCommand.Execute(computer);
+            return;
         }
+
+        _viewModel.CopyRowCommand.Execute(
+            computer);
     }
 
+    /// <summary>
+    /// Kopiert nur den Inhalt der mit der rechten
+    /// Maustaste angeklickten Tabellenzelle.
+    /// </summary>
     private void CopyCellMenuItem_Click(
         object sender,
         RoutedEventArgs e)
@@ -156,12 +161,20 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Liest anhand des DataGrid-Bindings den Wert
+    /// der aktuell ausgewählten Zelle aus.
+    /// </summary>
     private static string GetCellValue(
         DataGridColumn column,
         ComputerRecord computer)
     {
-        if (column is not DataGridBoundColumn boundColumn ||
-            boundColumn.Binding is not Binding binding)
+        if (column is not DataGridBoundColumn boundColumn)
+        {
+            return string.Empty;
+        }
+
+        if (boundColumn.Binding is not Binding binding)
         {
             return string.Empty;
         }
@@ -195,6 +208,10 @@ public partial class MainWindow : Window
         };
     }
 
+    /// <summary>
+    /// Sucht ausgehend von einem angeklickten WPF-Element
+    /// nach einem übergeordneten Element des angegebenen Typs.
+    /// </summary>
     private static T? FindParent<T>(
         DependencyObject? child)
         where T : DependencyObject
@@ -213,7 +230,8 @@ public partial class MainWindow : Window
                 current is Visual3D)
             {
                 current =
-                    VisualTreeHelper.GetParent(current);
+                    VisualTreeHelper.GetParent(
+                        current);
             }
             else if (current is FrameworkContentElement contentElement)
             {
