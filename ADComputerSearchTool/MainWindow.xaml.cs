@@ -7,7 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 
-namespace ADComputerSearchTool;
+namespace ADComputerSearchTool.Views;
 
 public partial class MainWindow : Window
 {
@@ -27,10 +27,6 @@ public partial class MainWindow : Window
             _viewModel;
     }
 
-    /// <summary>
-    /// Wählt beim Rechtsklick die angeklickte Zelle und
-    /// den dazugehörigen Computer aus.
-    /// </summary>
     private void ResultsGrid_PreviewMouseRightButtonDown(
         object sender,
         MouseButtonEventArgs e)
@@ -76,10 +72,6 @@ public partial class MainWindow : Window
         clickedCell.Focus();
     }
 
-    /// <summary>
-    /// Kopiert die vollständige Zeile des Computers.
-    /// Der Rechtsklick auf eine einzelne Zelle reicht aus.
-    /// </summary>
     private void CopyRowMenuItem_Click(
         object sender,
         RoutedEventArgs e)
@@ -90,28 +82,17 @@ public partial class MainWindow : Window
 
         if (computer == null)
         {
-            MessageBox.Show(
-                "Bitte mit der rechten Maustaste auf eine Tabellenzelle klicken.",
-                "Zeile kopieren",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-
+            _viewModel.ShowNoRowSelectedMessage();
             return;
         }
 
-        if (!_viewModel.CopyRowCommand.CanExecute(computer))
+        if (_viewModel.CopyRowCommand.CanExecute(computer))
         {
-            return;
+            _viewModel.CopyRowCommand.Execute(
+                computer);
         }
-
-        _viewModel.CopyRowCommand.Execute(
-            computer);
     }
 
-    /// <summary>
-    /// Kopiert ausschließlich den Wert der mit der
-    /// rechten Maustaste angeklickten Zelle.
-    /// </summary>
     private void CopyCellMenuItem_Click(
         object sender,
         RoutedEventArgs e)
@@ -122,12 +103,7 @@ public partial class MainWindow : Window
         if (currentCell.Item is not ComputerRecord computer ||
             currentCell.Column == null)
         {
-            MessageBox.Show(
-                "Bitte mit der rechten Maustaste direkt auf eine Tabellenzelle klicken.",
-                "Zelle kopieren",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-
+            _viewModel.ShowNoCellSelectedMessage();
             return;
         }
 
@@ -140,27 +116,11 @@ public partial class MainWindow : Window
             currentCell.Column.Header?.ToString() ??
             "Zelle";
 
-        try
-        {
-            _viewModel.CopyCellValue(
-                cellValue,
-                columnHeader);
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(
-                "Die Daten konnten nicht kopiert werden:\n\n" +
-                exception.Message,
-                "Fehler beim Kopieren",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
+        _viewModel.CopyCellValue(
+            cellValue,
+            columnHeader);
     }
 
-    /// <summary>
-    /// Ermittelt über das Binding der DataGrid-Spalte
-    /// den Wert der ausgewählten Zelle.
-    /// </summary>
     private static string GetCellValue(
         DataGridColumn column,
         ComputerRecord computer)

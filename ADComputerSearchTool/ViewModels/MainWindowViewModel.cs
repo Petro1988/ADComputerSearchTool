@@ -15,12 +15,22 @@ public sealed class MainWindowViewModel : ViewModelBase
     private readonly IClipboardService _clipboardService;
     private readonly IExcelExportService _excelExportService;
     private readonly IFileDialogService _fileDialogService;
+    private readonly IDialogService _dialogService;
 
-    private string _computerNameFilter = string.Empty;
-    private string _organizationalUnitFilter = string.Empty;
-    private string _descriptionFilter = string.Empty;
-    private string _groupFilter = string.Empty;
-    private string _ipAddressFilter = string.Empty;
+    private string _computerNameFilter =
+        string.Empty;
+
+    private string _organizationalUnitFilter =
+        string.Empty;
+
+    private string _descriptionFilter =
+        string.Empty;
+
+    private string _groupFilter =
+        string.Empty;
+
+    private string _ipAddressFilter =
+        string.Empty;
 
     private ComputerStatusFilter _selectedStatus =
         ComputerStatusFilter.All;
@@ -36,7 +46,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         IActiveDirectoryService activeDirectoryService,
         IClipboardService clipboardService,
         IExcelExportService excelExportService,
-        IFileDialogService fileDialogService)
+        IFileDialogService fileDialogService,
+        IDialogService dialogService)
     {
         _activeDirectoryService =
             activeDirectoryService ??
@@ -57,6 +68,11 @@ public sealed class MainWindowViewModel : ViewModelBase
             fileDialogService ??
             throw new ArgumentNullException(
                 nameof(fileDialogService));
+
+        _dialogService =
+            dialogService ??
+            throw new ArgumentNullException(
+                nameof(dialogService));
 
         SearchCommand =
             new AsyncRelayCommand(
@@ -216,45 +232,19 @@ public sealed class MainWindowViewModel : ViewModelBase
         try
         {
             ComputerSearchCriteria criteria =
-                new()
-                {
-                    ComputerName =
-                        ComputerNameFilter.Trim(),
-
-                    OrganizationalUnit =
-                        OrganizationalUnitFilter.Trim(),
-
-                    Description =
-                        DescriptionFilter.Trim(),
-
-                    GroupName =
-                        GroupFilter.Trim(),
-
-                    IpAddress =
-                        IpAddressFilter.Trim(),
-
-                    Status =
-                        SelectedStatus
-                };
+                CreateSearchCriteria();
 
             IReadOnlyList<ComputerRecord> computers =
                 await _activeDirectoryService
                     .SearchComputersAsync(criteria);
 
-            Results.Clear();
-
-            foreach (ComputerRecord computer in computers)
-            {
-                Results.Add(computer);
-            }
+            SetResults(computers);
 
             SelectedComputer =
                 null;
 
             StatusMessage =
                 "Suche abgeschlossen.";
-
-            RefreshResultInformation();
         }
         catch (OperationCanceledException)
         {
@@ -264,12 +254,53 @@ public sealed class MainWindowViewModel : ViewModelBase
         catch (Exception exception)
         {
             StatusMessage =
-                "Fehler bei der AD-Abfrage: " +
-                exception.Message;
+                "Fehler bei der AD-Abfrage.";
+
+            _dialogService.ShowError(
+                "Die Active-Directory-Abfrage ist fehlgeschlagen:\n\n" +
+                exception.Message,
+                "Fehler bei der AD-Abfrage");
         }
         finally
         {
             IsBusy = false;
+
+            RefreshResultInformation();
+        }
+    }
+
+    private ComputerSearchCriteria CreateSearchCriteria()
+    {
+        return new ComputerSearchCriteria
+        {
+            ComputerName =
+                ComputerNameFilter.Trim(),
+
+            OrganizationalUnit =
+                OrganizationalUnitFilter.Trim(),
+
+            Description =
+                DescriptionFilter.Trim(),
+
+            GroupName =
+                GroupFilter.Trim(),
+
+            IpAddress =
+                IpAddressFilter.Trim(),
+
+            Status =
+                SelectedStatus
+        };
+    }
+
+    private void SetResults(
+        IEnumerable<ComputerRecord> computers)
+    {
+        Results.Clear();
+
+        foreach (ComputerRecord computer in computers)
+        {
+            Results.Add(computer);
         }
     }
 
@@ -308,8 +339,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         if (Results.Count == 0)
         {
-            StatusMessage =
-                "Es sind keine Ergebnisse zum Exportieren vorhanden.";
+            _dialogService.ShowInformation(
+                "Es sind keine Ergebnisse zum Exportieren vorhanden.",
+                "Excel-Export");
 
             return;
         }
@@ -334,12 +366,20 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             StatusMessage =
                 "Der Excel-Export wurde erfolgreich erstellt.";
+
+            _dialogService.ShowInformation(
+                "Der Excel-Export wurde erfolgreich erstellt.",
+                "Excel-Export");
         }
         catch (Exception exception)
         {
             StatusMessage =
-                "Der Excel-Export ist fehlgeschlagen: " +
-                exception.Message;
+                "Der Excel-Export ist fehlgeschlagen.";
+
+            _dialogService.ShowError(
+                "Der Excel-Export ist fehlgeschlagen:\n\n" +
+                exception.Message,
+                "Fehler beim Excel-Export");
         }
     }
 
@@ -348,8 +388,9 @@ public sealed class MainWindowViewModel : ViewModelBase
     {
         if (computer == null)
         {
-            StatusMessage =
-                "Es wurde kein Computer ausgewählt.";
+            _dialogService.ShowInformation(
+                "Es wurde kein Computer ausgewählt.",
+                "Zeile kopieren");
 
             return;
         }
@@ -366,8 +407,12 @@ public sealed class MainWindowViewModel : ViewModelBase
         catch (Exception exception)
         {
             StatusMessage =
-                "Die Zeile konnte nicht kopiert werden: " +
-                exception.Message;
+                "Die Zeile konnte nicht kopiert werden.";
+
+            _dialogService.ShowError(
+                "Die Zeile konnte nicht kopiert werden:\n\n" +
+                exception.Message,
+                "Fehler beim Kopieren");
         }
     }
 
@@ -394,11 +439,27 @@ public sealed class MainWindowViewModel : ViewModelBase
         catch (Exception exception)
         {
             StatusMessage =
-                "Die Zelle konnte nicht kopiert werden: " +
-                exception.Message;
+                "Die Zelle konnte nicht kopiert werden.";
 
-            throw;
+            _dialogService.ShowError(
+                "Die Zelle konnte nicht kopiert werden:\n\n" +
+                exception.Message,
+                "Fehler beim Kopieren");
         }
+    }
+
+    public void ShowNoRowSelectedMessage()
+    {
+        _dialogService.ShowInformation(
+            "Bitte mit der rechten Maustaste auf eine Tabellenzelle klicken.",
+            "Zeile kopieren");
+    }
+
+    public void ShowNoCellSelectedMessage()
+    {
+        _dialogService.ShowInformation(
+            "Bitte mit der rechten Maustaste direkt auf eine Tabellenzelle klicken.",
+            "Zelle kopieren");
     }
 
     private void RefreshResultInformation()

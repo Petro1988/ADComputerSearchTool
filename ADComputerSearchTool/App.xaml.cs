@@ -1,6 +1,7 @@
 ﻿using ADComputerSearchTool.Services;
 using ADComputerSearchTool.Services.Interfaces;
 using ADComputerSearchTool.ViewModels;
+using ADComputerSearchTool.Views;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Windows;
@@ -50,6 +51,10 @@ public partial class App : Application
         services.AddSingleton<
             IFileDialogService,
             FileDialogService>();
+
+        services.AddSingleton<
+            IDialogService,
+            DialogService>();
 
         services.AddSingleton<
             MainWindowViewModel>();
